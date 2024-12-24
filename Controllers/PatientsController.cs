@@ -33,6 +33,9 @@ using Accord.Imaging.Formats;
 using Accord.Imaging.Filters;
 using Accord.Vision.Detection;
 using Accord.Vision.Detection.Cascades;
+using System.Diagnostics;
+using Newtonsoft.Json;
+using System.Text;
 
 
 
@@ -53,33 +56,37 @@ public class PatientsController : ControllerBase
         _faceRecognizer = new LBPHFaceRecognizer(); // Use LBPH for simplicity
         TrainFaceRecognizer();
     }
-    // Update the GetPatients method to return only the filename for FaceImg
+
     //[HttpGet]
     //public async Task<ActionResult<IEnumerable<Patient>>> GetPatients()
     //{
-    //    return await _context.Patients.Select(p => new Patient()
+    //    var baseUrl = $"{_httpContextAccessor.HttpContext.Request.Scheme}://{_httpContextAccessor.HttpContext.Request.Host}";
+
+    //    return await _context.Patients.Select(p => new Patient
     //    {
     //        Id = p.Id,
     //        Dob = p.Dob,
     //        Mobileno = p.Mobileno,
     //        Name = p.Name,
     //        Nationalno = p.Nationalno,
-    //        FaceImg = p.FaceImg // Only save the filename in the database
+    //        FaceImg = $"{baseUrl}/images/{p.FaceImg}"
     //    }).ToListAsync();
     //}
-
-    // Get all patients
-    //[HttpGet]
-    //public async Task<ActionResult<IEnumerable<Patient>>> GetPatients()
-    //{
-    //    return await _context.Patients.Select(p => new Patient() { Id = p.Id, Dob = p.Dob, Mobileno = p.Mobileno, Name = p.Name, Nationalno = p.Nationalno, FaceImg = Path.Combine(Directory.GetCurrentDirectory(), "images\\") + p.FaceImg }).ToListAsync();
-    //}
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Patient>>> GetPatients()
+    public async Task<ActionResult<IEnumerable<Patient>>> GetPatients([FromQuery] DateTime? lastModifiedAfter)
     {
         var baseUrl = $"{_httpContextAccessor.HttpContext.Request.Scheme}://{_httpContextAccessor.HttpContext.Request.Host}";
 
-        return await _context.Patients.Select(p => new Patient
+        // Filter patients based on the 'lastModifiedAfter' timestamp
+        var query = _context.Patients.AsQueryable();
+
+        if (lastModifiedAfter.HasValue)
+        {
+            query = query.Where(p => p.LastModified > lastModifiedAfter.Value);
+        }
+
+        // Select the patient data, including the image URL
+        var patients = await query.Select(p => new Patient
         {
             Id = p.Id,
             Dob = p.Dob,
@@ -88,106 +95,10 @@ public class PatientsController : ControllerBase
             Nationalno = p.Nationalno,
             FaceImg = $"{baseUrl}/images/{p.FaceImg}"
         }).ToListAsync();
+
+        return patients;
     }
-    //[HttpPost(" PatientWithImage")]
-    //public async Task<IActionResult> AddPatientWithImage([FromForm] IFormFile file, [FromForm] string name, [FromForm] string nationalNo, [FromForm] string mobileNo, [FromForm] string strDOB)
-    //{
-    //    // Validate the input data
-    //    if (file == null || file.Length == 0)
-    //    {
-    //        return BadRequest(new { Message = "No file uploaded or the file is empty." });
-    //    }
 
-    //    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(nationalNo) || string.IsNullOrWhiteSpace(mobileNo))
-    //    {
-    //        return BadRequest(new { Message = "Name, National Number, and Mobile Number are required." });
-    //    }
-
-    //    try
-    //    {
-    //        // Parse DOB if provided
-    //        DateTime? dob = null;
-    //        if (!string.IsNullOrWhiteSpace(strDOB))
-    //        {
-    //            dob = DateTime.Parse(strDOB);
-    //        }
-
-    //        // Create the patient record with the details
-    //        var patient = new Patient
-    //        {
-    //            Name = name,
-    //            Nationalno = nationalNo,
-    //            Mobileno = mobileNo,
-    //            DOB = dob,
-    //            FaceImg = $"{name}.jpg" // Set the filename for the image
-    //        };
-
-    //        // Save the patient details to the database
-    //        _context.Patients.Add(patient);
-    //        await _context.SaveChangesAsync();
-
-    //        // Define the directory and path for the image
-    //        var specificDirectoryPath = @"C:\Users\dell\Desktop\Patient\PatientReco\Images"; // Adjust this path as needed
-    //        if (!Directory.Exists(specificDirectoryPath))
-    //        {
-    //            Directory.CreateDirectory(specificDirectoryPath);
-    //        }
-
-    //        var filePath = Path.Combine(specificDirectoryPath, patient.FaceImg);
-
-    //        // Save the image file
-    //        using (var stream = new FileStream(filePath, FileMode.Create))
-    //        {
-    //            await file.CopyToAsync(stream);
-    //        }
-
-    //        return Ok(new { Message = "Patient data and image saved successfully.", PatientId = patient.Id });
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        Console.WriteLine($"Error: {ex.Message}");
-    //        return StatusCode(500, new { Message = $"Error saving data: {ex.Message}" });
-    //    }
-    //}
-
-    //[HttpPost("addPatientWithImage")]
-    //public async Task<IActionResult> AddPatientWithImage([FromForm] IFormFile image, [FromForm] string name, [FromForm] string dob, [FromForm] string mobileno, [FromForm] string nationalno)
-    //{
-    //    // Ensure the image and required data fields are present
-    //    if (image == null || string.IsNullOrEmpty(name))
-    //    {
-    //        return BadRequest("Missing required data.");
-    //    }
-
-    //    // Set the directory path where images will be stored
-    //    var imagesDirectory = Path.Combine("wwwroot", "Images");
-    //    if (!Directory.Exists(imagesDirectory))
-    //    {
-    //        Directory.CreateDirectory(imagesDirectory);
-    //    }
-
-    //    // Save the image with the patient's name
-    //    var filePath = Path.Combine(imagesDirectory, $"{name}.png");
-    //    using (var stream = new FileStream(filePath, FileMode.Create))
-    //    {
-    //        await image.CopyToAsync(stream);
-    //    }
-
-    //    // Save patient data to the database
-    //    var patient = new Patient
-    //    {
-    //        Name = name,
-    //        Dob = dob,
-    //        Mobileno = mobileno,
-    //        Nationalno = nationalno,
-    //        FaceImg = filePath // Store the file path in the database
-    //    };
-
-    //    _context.Patients.Add(patient);
-    //    await _context.SaveChangesAsync();
-
-    //    return Ok(patient);
-    //}
 
     [HttpPost("addPatient")]
     public async Task<ActionResult<int>> AddPatient([FromBody] CreatePatientVM patientData)
@@ -198,14 +109,42 @@ public class PatientsController : ControllerBase
 
             if (nationalIdExists)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, new Response() { status = "NationalIdExists", errorMsg = "National Id Already Exists ", errorMsgAr = "الرقم القومي موجود بالفعل" });
+                return StatusCode(StatusCodes.Status500InternalServerError, new Response()
+                {
+                    status = "NationalIdExists",
+                    errorMsg = "National Id Already Exists",
+                    errorMsgAr = "الرقم القومي موجود بالفعل"
+                });
             }
-            // Add patient data including face image path to the database
-            var Patient = new Patient() { Name = patientData.Name, Dob = DateTime.Parse(patientData.Dob), Mobileno = patientData.Mobileno, Nationalno = patientData.Nationalno, FaceImg = patientData.FaceImg };
-            _context.Patients.Add(Patient);
-            await _context.SaveChangesAsync();
 
-            return Patient.Id; // Return the patient data with ID
+            // Add patient data including face image path to the database
+            var Patient = new Patient()
+            {
+                Name = patientData.Name,
+                Dob = DateTime.Parse(patientData.Dob),
+                Mobileno = patientData.Mobileno,
+                Nationalno = patientData.Nationalno,
+                FaceImg = patientData.FaceImg
+            };
+
+            _context.Patients.Add(Patient);
+            await _context.SaveChangesAsync(); // Save changes to the database
+
+            // Trigger encodings update in the background
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await UpdateEncodingsAsync();
+                    Console.WriteLine("Encodings reloaded successfully after addition.");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Failed to reload encodings after addition: {ex.Message}");
+                }
+            });
+
+            return Patient.Id; // Return the patient ID
         }
         catch (Exception ex)
         {
@@ -213,6 +152,7 @@ public class PatientsController : ControllerBase
             return StatusCode(500, "Internal server error.");
         }
     }
+
 
 
 
@@ -402,18 +342,13 @@ public class PatientsController : ControllerBase
     [Route("UpdatePatient")]
     public async Task<IActionResult> UpdatePatient(Patient updatedPatient)
     {
-        //if (id != updatedPatient.Id)
-        //{
-        //    return BadRequest(new { message = $"Patient ID mismatch: URL ID {updatedPatient.Id} does not match Patient ID {updatedPatient.Id}" });
-        //}
-
         var existingPatient = await _context.Patients.FindAsync(updatedPatient.Id);
         if (existingPatient == null)
         {
-            return NotFound();
+            return NotFound(new { message = "Patient not found" });
         }
 
-        // Update properties
+        // Update patient properties
         existingPatient.Name = updatedPatient.Name;
         existingPatient.Mobileno = updatedPatient.Mobileno;
         if (updatedPatient.StrDob != null)
@@ -421,8 +356,84 @@ public class PatientsController : ControllerBase
         existingPatient.Nationalno = updatedPatient.Nationalno;
 
         await _context.SaveChangesAsync(); // Save changes to the database
+
+        // Log database update success
+        Console.WriteLine($"Patient with ID {updatedPatient.Id} updated successfully.");
+
+        // Trigger encodings update in the background
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await UpdateEncodingsAsync();
+                Console.WriteLine("Encodings reloaded successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to reload encodings: {ex.Message}");
+            }
+        });
+
         return Ok(existingPatient);
     }
+
+
+
+
+
+    private async Task UpdateEncodingsAsync()
+    {
+        using var httpClient = new HttpClient();
+        httpClient.Timeout = TimeSpan.FromSeconds(30); // Set a reasonable timeout
+
+        // Optionally, add headers if needed by the Flask API
+        httpClient.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+        var response = await httpClient.GetAsync("http://localhost:5000/reload_encodings");
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // Log or handle the error
+            var errorDetails = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Failed to update encodings: {response.ReasonPhrase}. Details: {errorDetails}");
+        }
+    }
+
+
+
+
+
+    //public async Task ReloadEncodingsAsync(int patientId, string faceImagePath)
+    //{
+    //    using var httpClient = new HttpClient();
+    //    httpClient.Timeout = TimeSpan.FromSeconds(30); // Set a reasonable timeout
+
+    //    // Optionally, add headers if needed by the Flask API
+    //    httpClient.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+    //    // Prepare data to be sent to the Python API
+    //    var requestData = new
+    //    {
+    //        PatientId = patientId,        // Pass the patient ID
+    //        ImagePath = faceImagePath     // Pass the image path
+    //    };
+
+    //    var jsonContent = new StringContent(
+    //        JsonConvert.SerializeObject(requestData),
+    //        Encoding.UTF8,
+    //        "application/json"
+    //    );
+
+    //    // Send the request to the Python API to reload the encodings
+    //    var response = await httpClient.PostAsync("http://localhost:5000/reload_encodings", jsonContent);
+
+    //    if (!response.IsSuccessStatusCode)
+    //    {
+    //        // Log or handle the error
+    //        var errorDetails = await response.Content.ReadAsStringAsync();
+    //        throw new Exception($"Failed to update encodings: {response.ReasonPhrase}. Details: {errorDetails}");
+    //    }
+    //}
 
 
 
@@ -448,18 +459,47 @@ public class PatientsController : ControllerBase
         return Ok("All records deleted successfully.");
     }
     [HttpDelete("{id}")]
-    public IActionResult DeletePatient(int id)
+    public async Task<IActionResult> DeletePatient(int id) // ID from the route
     {
-        var patient = _context.Patients.Find(id);
+        var patient = await _context.Patients.FindAsync(id);
         if (patient == null)
         {
             return NotFound(); // Return 404 if patient not found
         }
 
         _context.Patients.Remove(patient);
-        _context.SaveChanges(); // Save changes to the database
+        await _context.SaveChangesAsync(); // Save changes to the database
+
+        // Trigger encodings update in the background
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await UpdateEncodingsAsync();
+                Console.WriteLine("Encodings reloaded successfully after deletion.");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to reload encodings after deletion: {ex.Message}");
+            }
+        });
+
         return Ok(); // Return 200 OK on successful deletion
     }
+
+    //[HttpDelete("{id}")]
+    //public IActionResult DeletePatient(int id)
+    //{
+    //    var patient = _context.Patients.Find(id);
+    //    if (patient == null)
+    //    {
+    //        return NotFound(); // Return 404 if patient not found
+    //    }
+
+    //    _context.Patients.Remove(patient);
+    //    _context.SaveChanges(); // Save changes to the database
+    //    return Ok(); // Return 200 OK on successful deletion
+    //}
     [HttpPost("uploadFaceImage/{patientId}")]
     public async Task<IActionResult> UploadFaceImage([FromForm] IFormFile file, int patientId)
     {
@@ -536,100 +576,87 @@ public class PatientsController : ControllerBase
             Console.WriteLine("No valid training images found.");
         }
     }
-    //[HttpPost("detectAndFind")]
-    //public IActionResult DetectAndFind([FromForm] IFormFile file)
-    //{
-    //    try
-    //    {
-    //        using var memoryStream = new MemoryStream();
-    //        file.CopyTo(memoryStream);
-    //        var imageData = memoryStream.ToArray();
+    [HttpPost("detectAndFind")]
+    public IActionResult DetectAndFind([FromForm] IFormFile file)
+    {
+        try
+        {
+            // Save the uploaded file temporarily
+            var tempImagePath = Path.GetTempFileName();
+            using (var fileStream = new FileStream(tempImagePath, FileMode.Create))
+            {
+                file.CopyTo(fileStream);
+            }
 
-    //        // Load the image using Accord
-    //        var bitmap = new Bitmap(new MemoryStream(imageData));
+            // Path to Python executable and script
+            var pythonExecutable = "python"; // Use full path if needed
+            var pythonScript = @"C:\Users\dell\source\repos\PatientSystem\bin\Debug\net8.0\Script.py";
+            var knownImagesFolder = @"C:\Users\dell\source\repos\PatientSystem\images";
 
-    //        // Convert the image to grayscale
-    //        var grayImage = Grayscale.CommonAlgorithms.BT709.Apply(bitmap);
+            // Run the Python script
+            var processStartInfo = new ProcessStartInfo
+            {
+                FileName = pythonExecutable,
+                Arguments = $"-c \"import cv2; print(cv2.__version__)\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
 
-    //        // Load Haar cascade
-    //        var cascadePath = "haarcascade_frontalface_default.xml";
-    //        var cascade = new Accord.Vision.Detection.Cascades.HaarCascade(cascadePath);
+            using var process = new Process { StartInfo = processStartInfo };
+            process.Start();
 
-    //        // Initialize the Haar Object Detector
-    //        var detector = new Accord.Vision.Detection.HaarObjectDetector(cascade)
-    //        {
-    //            SearchMode = Accord.Vision.Detection.ObjectDetectorSearchMode.Average,
-    //            ScalingMode = Accord.Vision.Detection.ObjectDetectorScalingMode.SmallerToGreater,
-    //            ScaleFactor = 1.1f,
-    //            MinSize = new Size(30, 30),
-    //            MaxSize = new Size(300, 300)
-    //        };
+            // Capture the output
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
 
-    //        // Detect faces
-    //        var faces = detector.ProcessFrame(grayImage);
-    //        if (faces.Length == 0)
-    //        {
-    //            return Ok(new { isMatch = false, Message = "No face detected in the image." });
-    //        }
+            // Handle Python script output
+            if (!string.IsNullOrEmpty(error))
+            {
+                return StatusCode(500, new { Message = $"Error from Python script: {error}" });
+            }
 
-    //        // Extract the first detected face
-    //        var faceRect = faces[0];
-    //        var faceBitmap = grayImage.Clone(faceRect, grayImage.PixelFormat);
+            // Deserialize Python script output
+            var results = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(output);
+            string matchedName = results?.matched_name;
 
-    //        // Save detected parts
-    //        var detectedParts = new
-    //        {
-    //            Faces = faces.Select(f => new { f.X, f.Y, f.Width, f.Height }).ToList()
-    //        };
+            if (!string.IsNullOrEmpty(matchedName))
+            {
+                // Query the database for patient data
+                var patient = _context.Patients.FirstOrDefault(p => p.Name == matchedName);
+                if (patient != null)
+                {
+                    return Ok(new
+                    {
+                        Message = "Match found",
+                        Patient = new
+                        {
+                            patient.Id,
+                            patient.Name,
+                            patient.Dob,
+                            patient.Nationalno,
+                            patient.FaceImg
 
-    //        // Perform patient matching (reuse your existing logic)
-    //        var patientImagesFolder = @"C:\Users\dell\source\repos\PatientSystem\images";
-    //        var patientImageFiles = Directory.GetFiles(patientImagesFolder, "*.jpg");
-
-    //        foreach (var patientImagePath in patientImageFiles)
-    //        {
-    //            var patientImage = new Bitmap(patientImagePath);
-    //            var resizedCapturedFace = Accord.Imaging.ResizeTools.Resize(faceBitmap, 100, 100);
-    //            var resizedPatientImage = Accord.Imaging.ResizeTools.Resize(patientImage, 100, 100);
-
-    //            // Calculate similarity
-    //            var similarity = new Accord.Imaging.Metrics.SSIM()
-    //                .Compare(resizedCapturedFace, resizedPatientImage);
-
-    //            if (similarity > 0.5)
-    //            {
-    //                var FaceImg = Path.GetFileNameWithoutExtension(patientImagePath).Trim();
-    //                var matchingPatient = _context.Patients
-    //                    .FirstOrDefault(p => EF.Functions.Like(p.FaceImg, $"{FaceImg}%"));
-
-    //                if (matchingPatient != null)
-    //                {
-    //                    return Ok(new
-    //                    {
-    //                        isMatch = true,
-    //                        detectedParts,
-    //                        patient = new
-    //                        {
-    //                            matchingPatient.Id,
-    //                            matchingPatient.Name,
-    //                            matchingPatient.Dob,
-    //                            matchingPatient.Mobileno,
-    //                            matchingPatient.Nationalno,
-    //                            matchingPatient.FaceImg
-    //                        }
-    //                    });
-    //                }
-    //            }
-    //        }
-
-    //        return Ok(new { isMatch = false, detectedParts });
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        Console.WriteLine($"Error detecting face: {ex.Message}");
-    //        return StatusCode(500, new { Message = $"Error detecting face: {ex.Message}" });
-    //    }
-    //}
+                        }
+                    });
+                }
+                else
+                {
+                    return NotFound(new { Message = "Patient record not found in the database" });
+                }
+            }
+            else
+            {
+                return NotFound(new { Message = "No matching face found" });
+            }
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = $"Error detecting face: {ex.Message}" });
+        }
+    }
 
 
 
@@ -979,8 +1006,9 @@ public class PatientsController : ControllerBase
         }
         return img;
     }
-
    
+
+
     //private Image<Bgr, byte> ConvertBitmapToImage(Bitmap bitmap)
     //{
     //    var img = new Image<Bgr, byte>(bitmap.Width, bitmap.Height);

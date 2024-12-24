@@ -20,6 +20,8 @@ public partial class Patient
     public string? Nationalno { get; set; }
     
  public string? FaceImg { get; set; }
+    [NotMapped]
+    public DateTime LastModified { get; set; }
 
 
 

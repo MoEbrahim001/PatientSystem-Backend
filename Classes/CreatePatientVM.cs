@@ -12,6 +12,7 @@
         public string Dob { get; set; }
         public string? Mobileno { get; set; }
 
+
         public string? Nationalno { get; set; }
 
         public string? FaceImg { get; set; }
