@@ -16,6 +16,6 @@
         public string? Nationalno { get; set; }
 
         public string? FaceImg { get; set; }
-
+        public string? EncodingFile { get; set; }
     }
 }

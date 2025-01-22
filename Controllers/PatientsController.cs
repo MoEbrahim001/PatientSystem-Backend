@@ -2,39 +2,14 @@
 using Microsoft.EntityFrameworkCore;
 using PatientSystem.Models;
 using PatientSystem.NewFolder;
-using Microsoft.AspNetCore.Http;
 using System.Drawing; // You may need to install System.Drawing.Common
-using System.IO;
 using Emgu.CV;
 using Emgu.CV.Face;
 using Emgu.CV.Structure;
-using System.Threading.Tasks;
 using Emgu.CV.CvEnum;
-using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
 using PatientSystem.ResponseDTO;
-using Emgu.CV.Features2D;
-using Emgu.CV.Util;
-using Emgu.CV.XObjdetect;
-using DlibDotNet;
-using DlibDotNet.Extensions;
-using Tensorflow;
-using Tensorflow.Keras.Models;
-using Tensorflow.Keras.Layers;
-using Tensorflow.Sessions;
-using Tensorflow.NumPy;
 using Accord.Math;
-using Accord;
-using Accord.Statistics;
-using Accord.Imaging.ComplexFilters;
-using Accord.Imaging.ColorReduction;
-using Accord.Imaging.Textures;
-using Accord.Imaging.Formats;
-using Accord.Imaging.Filters;
-using Accord.Vision.Detection;
-using Accord.Vision.Detection.Cascades;
 using System.Diagnostics;
-using Newtonsoft.Json;
 using System.Text;
 
 
@@ -54,7 +29,7 @@ public class PatientsController : ControllerBase
         _context = context;
         _httpContextAccessor = httpContextAccessor;
         _faceRecognizer = new LBPHFaceRecognizer(); // Use LBPH for simplicity
-        TrainFaceRecognizer();
+      
     }
 
     //[HttpGet]
@@ -100,6 +75,8 @@ public class PatientsController : ControllerBase
     }
 
 
+
+
     [HttpPost("addPatient")]
     public async Task<ActionResult<int>> AddPatient([FromBody] CreatePatientVM patientData)
     {
@@ -117,32 +94,18 @@ public class PatientsController : ControllerBase
                 });
             }
 
-            // Add patient data including face image path to the database
+            // Add patient data to the database, FaceImg can be null
             var Patient = new Patient()
             {
                 Name = patientData.Name,
                 Dob = DateTime.Parse(patientData.Dob),
                 Mobileno = patientData.Mobileno,
                 Nationalno = patientData.Nationalno,
-                FaceImg = patientData.FaceImg
+                FaceImg = null // FaceImg will be updated later
             };
 
             _context.Patients.Add(Patient);
-            await _context.SaveChangesAsync(); // Save changes to the database
-
-            // Trigger encodings update in the background
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await UpdateEncodingsAsync();
-                    Console.WriteLine("Encodings reloaded successfully after addition.");
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"Failed to reload encodings after addition: {ex.Message}");
-                }
-            });
+            await _context.SaveChangesAsync();
 
             return Patient.Id; // Return the patient ID
         }
@@ -152,6 +115,65 @@ public class PatientsController : ControllerBase
             return StatusCode(500, "Internal server error.");
         }
     }
+
+
+    private bool IsBase64String(string base64String)
+    {
+        if (string.IsNullOrEmpty(base64String))
+            return false;
+
+        Span<byte> buffer = new Span<byte>(new byte[base64String.Length]);
+        return Convert.TryFromBase64String(base64String, buffer, out _);
+    }
+
+
+    private async Task<string> GenerateEncodingFile(int patientId, string faceImagePath)
+    {
+        try
+        {
+            // Prepare the face image path (ensure it's the correct path to the image)
+            var faceImageFilePath = Path.Combine("C:\\Users\\dell\\source\\repos\\PatientSystem\\images", faceImagePath);
+
+            // Rename the variable to avoid conflict with ControllerBase.File
+            if (!System.IO.File.Exists(faceImageFilePath))
+            {
+                throw new FileNotFoundException($"Face image file not found at path: {faceImageFilePath}");
+            }
+
+            // Convert backslashes to forward slashes for URL compatibility
+            var faceImageFilePathForUrl = faceImageFilePath.Replace("\\", "/");
+
+            // Call the Python service (Flask API) to generate the encoding for the face image
+            var client = new HttpClient();
+            var jsonContent = new StringContent($"{{\"patientId\": {patientId}, \"faceImage\": \"{faceImageFilePathForUrl}\"}}", Encoding.UTF8, "application/json");
+
+            var response = await client.PostAsync("http://localhost:5000/generate_encoding", jsonContent);
+
+            if (response.IsSuccessStatusCode)
+            {
+                // Get the encoding file path from Flask
+                var encodingFilePath = await response.Content.ReadAsStringAsync();
+                return encodingFilePath;
+            }
+            else
+            {
+                // Handle error response from Flask server
+                var errorContent = await response.Content.ReadAsStringAsync();
+                throw new Exception($"Failed to generate encoding file. Response: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log and throw exception
+            throw new Exception($"Error generating encoding file: {ex.Message}");
+        }
+    }
+
+
+
+
+
+
 
 
 
@@ -342,6 +364,7 @@ public class PatientsController : ControllerBase
     [Route("UpdatePatient")]
     public async Task<IActionResult> UpdatePatient(Patient updatedPatient)
     {
+        // Find the existing patient record in the database
         var existingPatient = await _context.Patients.FindAsync(updatedPatient.Id);
         if (existingPatient == null)
         {
@@ -355,10 +378,28 @@ public class PatientsController : ControllerBase
             existingPatient.Dob = DateTime.Parse(updatedPatient.StrDob.ToString());
         existingPatient.Nationalno = updatedPatient.Nationalno;
 
-        await _context.SaveChangesAsync(); // Save changes to the database
-
-        // Log database update success
+        // Save changes to the database
+        await _context.SaveChangesAsync();
         Console.WriteLine($"Patient with ID {updatedPatient.Id} updated successfully.");
+
+        // Check if the patient already has an encoding file
+        var encodingFilePath = Path.Combine("C:\\Users\\dell\\source\\repos\\PatientSystem\\encodings", $"{updatedPatient.Id}_encoding.dat");
+        if (!System.IO.File.Exists(encodingFilePath))
+        {
+            // If the encoding file does not exist, generate it
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var generatedFilePath = await GenerateEncodingFile(updatedPatient.Id, updatedPatient.FaceImg);
+                    Console.WriteLine($"Encoding file generated at: {generatedFilePath}");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Failed to generate encoding file for patient ID {updatedPatient.Id}: {ex.Message}");
+                }
+            });
+        }
 
         // Trigger encodings update in the background
         _ = Task.Run(async () =>
@@ -374,8 +415,10 @@ public class PatientsController : ControllerBase
             }
         });
 
+        // Return the updated patient object as the response
         return Ok(existingPatient);
     }
+
 
 
 
@@ -529,11 +572,45 @@ public class PatientsController : ControllerBase
             }
 
             Console.WriteLine($"File uploaded successfully: {filePath}");
+
+            // Update patient with the FaceImg path
             var patient = await _context.Patients.FindAsync(patientId);
             if (patient == null)
-                return NotFound("this patientId not Found");
+            {
+                return NotFound("This patientId not found");
+            }
+
             patient.FaceImg = uniqueFileName;
+            _context.Patients.Update(patient);
             await _context.SaveChangesAsync();
+
+            // Generate encoding file for the uploaded face image
+            try
+            {
+                var encodingFilePath = await GenerateEncodingFile(patientId, uniqueFileName);
+                patient.EncodingFile = encodingFilePath;
+                _context.Patients.Update(patient);
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to generate encoding file: {ex.Message}");
+            }
+
+            // Call UpdateEncodingsAsync to reload all encodings
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await UpdateEncodingsAsync();
+                    Console.WriteLine("Encodings reloaded successfully after image upload.");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Failed to reload encodings after image upload: {ex.Message}");
+                }
+            });
+
             return Ok(new { filePath });
         }
         catch (Exception ex)
@@ -542,40 +619,8 @@ public class PatientsController : ControllerBase
             return StatusCode(500, "Internal server error.");
         }
     }
-    private void TrainFaceRecognizer()
-    {
-        var faces = _context.Patients.Select(p => new { p.FaceImg, p.Id }).ToList();
-        var trainingMats = new List<Mat>();
-        var labels = new List<int>();
 
-        foreach (var face in faces)
-        {
-            // Assuming face.FaceImg contains only the file name, combine it with a base directory path.
-            string imagePath = Path.Combine("C:\\Users\\dell\\source\\repos\\PatientSystem\\images", face.FaceImg);
 
-            // Check if the file exists
-            if (System.IO.File.Exists(imagePath))
-            {
-                // Load the image as a Mat
-                var image = new Image<Gray, byte>(imagePath).Mat;
-                trainingMats.Add(image);
-                labels.Add(face.Id);
-            }
-            else
-            {
-                Console.WriteLine($"Image file not found: {imagePath}");
-            }
-        }
-
-        if (trainingMats.Count > 0)
-        {
-            _faceRecognizer.Train(trainingMats.ToArray(), labels.ToArray());
-        }
-        else
-        {
-            Console.WriteLine("No valid training images found.");
-        }
-    }
     [HttpPost("detectAndFind")]
     public IActionResult DetectAndFind([FromForm] IFormFile file)
     {
@@ -1006,7 +1051,7 @@ public class PatientsController : ControllerBase
         }
         return img;
     }
-   
+
 
 
     //private Image<Bgr, byte> ConvertBitmapToImage(Bitmap bitmap)
@@ -1025,18 +1070,3 @@ public class PatientsController : ControllerBase
     //    return img;
     //}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
