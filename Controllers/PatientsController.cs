@@ -11,6 +11,7 @@ using PatientSystem.ResponseDTO;
 using Accord.Math;
 using System.Diagnostics;
 using System.Text;
+using PatientSystem.Classes;
 
 
 
@@ -47,18 +48,18 @@ public class PatientsController : ControllerBase
     //        FaceImg = $"{baseUrl}/images/{p.FaceImg}"
     //    }).ToListAsync();
     //}
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<Patient>>> GetPatients([FromQuery] DateTime? lastModifiedAfter)
+    [HttpPost]
+    public async Task<ActionResult<patientResult>> GetPatients([FromBody]  patientParams patientParams)
     {
         var baseUrl = $"{_httpContextAccessor.HttpContext.Request.Scheme}://{_httpContextAccessor.HttpContext.Request.Host}";
-
+        var totalPatients = await _context.Patients.CountAsync();   
         // Filter patients based on the 'lastModifiedAfter' timestamp
-        var query = _context.Patients.AsQueryable();
+        var query = _context.Patients.Skip(patientParams.first).Take(patientParams.rows);
 
-        if (lastModifiedAfter.HasValue)
-        {
-            query = query.Where(p => p.LastModified > lastModifiedAfter.Value);
-        }
+        //if (lastModifiedAfter.HasValue)
+        //{
+        //    query = query.Where(p => p.LastModified > lastModifiedAfter.Value);
+        //}
 
         // Select the patient data, including the image URL
         var patients = await query.Select(p => new Patient
@@ -71,7 +72,7 @@ public class PatientsController : ControllerBase
             FaceImg = $"{baseUrl}/images/{p.FaceImg}"
         }).ToListAsync();
 
-        return patients;
+        return new patientResult { results = patients , totalResults = totalPatients };
     }
 
 
