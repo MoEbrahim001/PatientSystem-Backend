@@ -52,17 +52,16 @@ public class PatientsController : ControllerBase
     public async Task<ActionResult<patientResult>> GetPatients([FromBody]  patientParams patientParams)
     {
         var baseUrl = $"{_httpContextAccessor.HttpContext.Request.Scheme}://{_httpContextAccessor.HttpContext.Request.Host}";
-        var totalPatients = await _context.Patients.CountAsync();   
         // Filter patients based on the 'lastModifiedAfter' timestamp
-        var query = _context.Patients.Skip(patientParams.first).Take(patientParams.rows);
 
-        //if (lastModifiedAfter.HasValue)
-        //{
-        //    query = query.Where(p => p.LastModified > lastModifiedAfter.Value);
-        //}
+        var query = _context.Patients.AsQueryable();
+        if (!string.IsNullOrEmpty(patientParams.searchtext))
+        {
+            query=query.Where(p => p.Name.Contains(patientParams.searchtext) || p.Mobileno.Contains(patientParams.searchtext));
 
-        // Select the patient data, including the image URL
-        var patients = await query.Select(p => new Patient
+        }
+        var totalPatients = await query.CountAsync();
+        var patients = await query.Skip(patientParams.first).Take(patientParams.rows).Select(p => new Patient
         {
             Id = p.Id,
             Dob = p.Dob,
@@ -273,6 +272,27 @@ public class PatientsController : ControllerBase
 
 
 
+    //[HttpGet("search")]
+    //public async Task<IActionResult> SearchPatients([FromQuery] string searchText)
+    //{
+    //    var baseUrl = $"{Request.Scheme}://{Request.Host}";
+
+    //    var patients = await _context.Patients
+    //        .Where(p => p.Name.Contains(searchText) || p.Mobileno.Contains(searchText))
+    //        .Select(p => new
+    //        {
+    //            p.Id,
+    //            p.Name,
+    //            p.Mobileno,
+    //            p.Dob,
+    //            p.Nationalno,
+    //            FaceImg = $"{baseUrl}/images/{p.FaceImg}" // Construct full URL for FaceImg
+    //        })
+    //        .ToListAsync(); // Use ToListAsync for asynchronous operation
+
+    //    return Ok(patients);
+    //}
+
     [HttpGet("search")]
     public async Task<IActionResult> SearchPatients([FromQuery] string searchText)
     {
@@ -293,6 +313,7 @@ public class PatientsController : ControllerBase
 
         return Ok(patients);
     }
+
 
 
     // PatientsController.cs

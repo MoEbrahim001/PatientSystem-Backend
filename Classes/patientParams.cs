@@ -4,5 +4,7 @@
     {
         public int first { get ; set; }
         public int rows { get; set; }
+        public string searchtext { get; set; }
+    
     }
 }
