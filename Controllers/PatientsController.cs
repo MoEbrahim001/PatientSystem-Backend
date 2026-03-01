@@ -47,7 +47,7 @@ public class PatientsController : ControllerBase
             Mobileno = p.Mobileno,
             Name = p.Name,
             Nationalno = p.Nationalno,
-            FaceImg = $"{baseUrl}/images/{p.FaceImg}"
+            FaceImg = $"http://localhost:5000/images/{p.FaceImg}"
         }).ToListAsync();
 
         return new patientResult { results = patients , totalResults = totalPatients };
@@ -102,7 +102,7 @@ public class PatientsController : ControllerBase
         try
         {
             // Prepare the face image path (ensure it's the correct path to the image)
-            var faceImageFilePath = Path.Combine("C:\\Users\\dell\\source\\repos\\PatientSystem\\images", faceImagePath);
+            var faceImageFilePath = Path.Combine("C:\\Users\\dell\\Desktop\\Face-Recognition\\PatientSystem-Backend\\images", faceImagePath);
 
             // Rename the variable to avoid conflict with ControllerBase.File
             if (!System.IO.File.Exists(faceImageFilePath))
@@ -154,7 +154,7 @@ public class PatientsController : ControllerBase
                 p.Mobileno,
                 p.Dob,
                 p.Nationalno,
-                FaceImg = $"{baseUrl}/images/{p.FaceImg}" // Construct full URL for FaceImg
+                FaceImg = $"http://localhost:5000/images/{p.FaceImg}" // Construct full URL for FaceImg
             })
             .ToListAsync(); // Use ToListAsync for asynchronous operation
 
