@@ -1,4 +1,5 @@
-﻿using PatientSystem.Application.Interfaces;
+﻿using Microsoft.AspNetCore.Http;
+using PatientSystem.Application.Interfaces;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
@@ -33,81 +34,45 @@ namespace PatientSystem.Infrastructure.Services
                 );
             }
 
-            Console.WriteLine(
-                $"BaseAddress = {_http.BaseAddress}"
-            );
-
-            Console.WriteLine(
-                "Endpoint = generate_encoding"
-            );
-
-            Console.WriteLine(
-                $"PatientId = {patientId}"
-            );
-
-            Console.WriteLine(
-                $"Image = {faceImageFullPath}"
-            );
-
             try
             {
-                using var form =
-                    new MultipartFormDataContent();
+                using var form = new MultipartFormDataContent();
 
                 form.Add(
-                    new StringContent(
-                        patientId.ToString()
-                    ),
+                    new StringContent(patientId.ToString()),
                     "patientId"
                 );
 
-                await using var fileStream =
-                    new FileStream(
-                        faceImageFullPath,
-                        FileMode.Open,
-                        FileAccess.Read,
-                        FileShare.Read
-                    );
+                await using var fileStream = new FileStream(
+                    faceImageFullPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read
+                );
 
-                using var fileContent =
-                    new StreamContent(fileStream);
-
+                using var fileContent = new StreamContent(fileStream);
                 fileContent.Headers.ContentType =
                     new MediaTypeHeaderValue(
-                        GetContentType(
-                            faceImageFullPath
-                        )
+                        GetContentType(faceImageFullPath)
                     );
 
                 form.Add(
                     fileContent,
                     "file",
-                    Path.GetFileName(
-                        faceImageFullPath
-                    )
+                    Path.GetFileName(faceImageFullPath)
                 );
 
-                var res = await _http.PostAsync(
+                using var response = await _http.PostAsync(
                     "generate_encoding",
                     form
                 );
 
-                var body =
-                    await res.Content
-                        .ReadAsStringAsync();
+                var body = await response.Content.ReadAsStringAsync();
 
-                Console.WriteLine(
-                    $"Status = {(int)res.StatusCode}"
-                );
-
-                Console.WriteLine(
-                    $"Body = {body}"
-                );
-
-                if (!res.IsSuccessStatusCode)
+                if (!response.IsSuccessStatusCode)
                 {
                     throw new Exception(
-                        $"Failed generate encoding: {body}"
+                        $"Python generate_encoding failed ({(int)response.StatusCode}): {body}"
                     );
                 }
 
@@ -123,7 +88,7 @@ namespace PatientSystem.Infrastructure.Services
                     string.IsNullOrWhiteSpace(result.EncodingFile))
                 {
                     throw new Exception(
-                        $"Python returned invalid encoding response: {body}"
+                        $"Python returned an invalid generate_encoding response: {body}"
                     );
                 }
 
@@ -131,10 +96,6 @@ namespace PatientSystem.Infrastructure.Services
             }
             catch (TaskCanceledException ex)
             {
-                Console.WriteLine(
-                    $"Python Face API timed out: {ex.Message}"
-                );
-
                 throw new Exception(
                     "Face encoding service timed out.",
                     ex
@@ -142,10 +103,67 @@ namespace PatientSystem.Infrastructure.Services
             }
             catch (HttpRequestException ex)
             {
-                Console.WriteLine(
-                    $"Cannot connect to Python Face API: {ex.Message}"
+                throw new Exception(
+                    "Could not connect to Face Recognition service.",
+                    ex
+                );
+            }
+        }
+
+        public async Task<string> DetectAndFindAsync(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+            {
+                throw new ArgumentException(
+                    "Face image file is required.",
+                    nameof(file)
+                );
+            }
+
+            try
+            {
+                using var form = new MultipartFormDataContent();
+                await using var stream = file.OpenReadStream();
+                using var fileContent = new StreamContent(stream);
+
+                fileContent.Headers.ContentType =
+                    new MediaTypeHeaderValue(
+                        string.IsNullOrWhiteSpace(file.ContentType)
+                            ? GetContentType(file.FileName)
+                            : file.ContentType
+                    );
+
+                form.Add(
+                    fileContent,
+                    "file",
+                    Path.GetFileName(file.FileName)
                 );
 
+                using var response = await _http.PostAsync(
+                    "detectAndFind",
+                    form
+                );
+
+                var body = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new Exception(
+                        $"Python detectAndFind failed ({(int)response.StatusCode}): {body}"
+                    );
+                }
+
+                return body;
+            }
+            catch (TaskCanceledException ex)
+            {
+                throw new Exception(
+                    "Face recognition service timed out.",
+                    ex
+                );
+            }
+            catch (HttpRequestException ex)
+            {
                 throw new Exception(
                     "Could not connect to Face Recognition service.",
                     ex
@@ -157,26 +175,16 @@ namespace PatientSystem.Infrastructure.Services
         {
             try
             {
-                var res = await _http.GetAsync(
+                using var response = await _http.GetAsync(
                     "reload_encodings"
                 );
 
-                var body =
-                    await res.Content
-                        .ReadAsStringAsync();
+                var body = await response.Content.ReadAsStringAsync();
 
-                Console.WriteLine(
-                    $"Reload Status = {(int)res.StatusCode}"
-                );
-
-                Console.WriteLine(
-                    $"Reload Body = {body}"
-                );
-
-                if (!res.IsSuccessStatusCode)
+                if (!response.IsSuccessStatusCode)
                 {
                     throw new Exception(
-                        $"Failed reload encodings: {body}"
+                        $"Failed to reload encodings: {body}"
                     );
                 }
             }
@@ -196,12 +204,9 @@ namespace PatientSystem.Infrastructure.Services
             }
         }
 
-        private static string GetContentType(
-            string filePath)
+        private static string GetContentType(string filePath)
         {
-            var extension =
-                Path.GetExtension(filePath)
-                    .ToLowerInvariant();
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
 
             return extension switch
             {
@@ -213,12 +218,11 @@ namespace PatientSystem.Infrastructure.Services
                 _ => "application/octet-stream"
             };
         }
-        private class GenerateEncodingResponse
+
+        private sealed class GenerateEncodingResponse
         {
             public string? Status { get; set; }
-
             public string? EncodingFile { get; set; }
-
             public string? Message { get; set; }
         }
     }

@@ -8,126 +8,81 @@ using PatientSystem.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
-// ============================
 // Controllers + Swagger
-// ============================
-
 builder.Services.AddControllers();
-
 builder.Services.AddEndpointsApiExplorer();
-
 builder.Services.AddSwaggerGen();
 
-
-// ============================
 // Database
-// ============================
+builder.Services.AddDbContext<PatientSystemDbContext>(options =>
+{
+    var connectionString = builder.Configuration
+        .GetConnectionString("DefaultConnection");
 
-builder.Services.AddDbContext<PatientSystemDbContext>(
-    options =>
+    if (string.IsNullOrWhiteSpace(connectionString))
     {
-        var connectionString =
-            builder.Configuration
-                .GetConnectionString(
-                    "DefaultConnection"
-                );
-
-        if (string.IsNullOrWhiteSpace(
-            connectionString))
-        {
-            throw new InvalidOperationException(
-                "DefaultConnection is missing."
-            );
-        }
-
-        options.UseSqlServer(
-            connectionString
+        throw new InvalidOperationException(
+            "DefaultConnection is missing."
         );
     }
-);
 
+    options.UseSqlServer(connectionString);
+});
 
-// ============================
-// Dependency Injection
-// ============================
+// DI
+builder.Services.AddScoped<IPatientRepository, PatientRepository>();
+builder.Services.AddScoped<IPatientService, PatientService>();
 
-builder.Services.AddScoped<
-    IPatientRepository,
-    PatientRepository
->();
-
-builder.Services.AddScoped<
-    IPatientService,
-    PatientService
->();
-
-
-// ============================
-// Python Face Recognition API
-// ============================
-
-builder.Services.AddHttpClient<
-    IFaceEncodingService,
-    FaceEncodingService
->(
+// .NET -> Python Face Recognition API
+builder.Services.AddHttpClient<IFaceEncodingService, FaceEncodingService>(
     (serviceProvider, client) =>
     {
-        var configuration =
-            serviceProvider
-                .GetRequiredService<
-                    IConfiguration
-                >();
+        var configuration = serviceProvider
+            .GetRequiredService<IConfiguration>();
 
-        var baseUrl =
-            configuration[
-                "FaceRecognition:BaseUrl"
-            ];
+        var baseUrl = configuration["FaceRecognition:BaseUrl"];
 
-        if (string.IsNullOrWhiteSpace(
-            baseUrl))
+        if (string.IsNullOrWhiteSpace(baseUrl))
         {
             throw new InvalidOperationException(
                 "FaceRecognition:BaseUrl is missing."
             );
         }
 
-        client.BaseAddress =
-            new Uri(baseUrl);
+        if (!baseUrl.EndsWith('/'))
+        {
+            baseUrl += "/";
+        }
 
-        client.Timeout =
-            TimeSpan.FromSeconds(60);
+        client.BaseAddress = new Uri(baseUrl);
+        client.Timeout = TimeSpan.FromSeconds(60);
     }
 );
 
+// Angular -> .NET CORS
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? Array.Empty<string>();
 
-// ============================
-// CORS
-// ============================
-
-builder.Services.AddCors(
-    options =>
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
     {
-        options.AddPolicy(
-            "AllowAll",
-            policy =>
-            {
-                policy
-                    .AllowAnyOrigin()
-                    .AllowAnyHeader()
-                    .AllowAnyMethod();
-            }
-        );
-    }
-);
+        if (allowedOrigins.Length == 0)
+        {
+            throw new InvalidOperationException(
+                "Cors:AllowedOrigins must contain at least one origin."
+            );
+        }
 
+        policy
+            .WithOrigins(allowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 
 var app = builder.Build();
-
-
-// ============================
-// Swagger
-// ============================
 
 if (app.Environment.IsDevelopment())
 {
@@ -135,50 +90,23 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-
-// ============================
-// Middleware
-// ============================
-
 app.UseHttpsRedirection();
-
-app.UseCors("AllowAll");
-
+app.UseCors("Frontend");
 app.UseAuthorization();
 
-
-// ============================
-// Images
-// ============================
-
-var imagesPath =
-    Path.Combine(
-        app.Environment.ContentRootPath,
-        "images"
-    );
-
-Directory.CreateDirectory(
-    imagesPath
+// Serve patient images from .NET.
+var imagesPath = Path.Combine(
+    app.Environment.ContentRootPath,
+    "images"
 );
 
-app.UseStaticFiles(
-    new StaticFileOptions
-    {
-        FileProvider =
-            new PhysicalFileProvider(
-                imagesPath
-            ),
+Directory.CreateDirectory(imagesPath);
 
-        RequestPath =
-            "/images"
-    }
-);
-
-
-// ============================
-// Controllers
-// ============================
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(imagesPath),
+    RequestPath = "/images"
+});
 
 app.MapControllers();
-
 app.Run();

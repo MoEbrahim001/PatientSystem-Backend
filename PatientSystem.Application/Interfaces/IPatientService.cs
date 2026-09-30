@@ -13,9 +13,7 @@ namespace PatientSystem.Application.Interfaces
             string baseUrl
         );
 
-        Task<int> AddAsync(
-            CreatePatientVM dto
-        );
+        Task<int> AddAsync(CreatePatientVM dto);
 
         Task<List<PatientDto>> SearchAsync(
             string searchText,
@@ -27,9 +25,7 @@ namespace PatientSystem.Application.Interfaces
             string baseUrl
         );
 
-        Task UpdateAsync(
-            Patient updatedPatient
-        );
+        Task UpdateAsync(Patient updatedPatient);
 
         Task<string> UploadFaceImageAsync(
             int patientId,
@@ -37,9 +33,9 @@ namespace PatientSystem.Application.Interfaces
             string contentRootPath
         );
 
-        Task DeleteAsync(
-            int id
-        );
+        Task<string> DetectAndFindAsync(IFormFile file);
+
+        Task DeleteAsync(int id);
 
         Task DeleteAllAsync();
     }
