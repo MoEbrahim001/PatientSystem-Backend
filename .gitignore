@@ -361,3 +361,10 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Patient uploaded images / face encodings
+PatientSystem.WebApi/images/
+PatientSystem.WebApi/EncodingFile/
+
+# Publish user-specific settings
+*.pubxml.user
