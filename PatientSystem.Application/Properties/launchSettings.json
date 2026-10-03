@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "PatientSystem.Application": {
+      "commandName": "Project"
+    }
+  }
+}
