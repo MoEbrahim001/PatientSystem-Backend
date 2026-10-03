@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using PatientSystem.Application.Interfaces;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
@@ -218,7 +219,18 @@ namespace PatientSystem.Infrastructure.Services
                 _ => "application/octet-stream"
             };
         }
-
+        public async Task<bool> WarmUpAsync()
+        {
+            try
+            {
+                var response = await _http.GetAsync("health");
+                return response.IsSuccessStatusCode;
+            }
+            catch
+            {
+                return false;
+            }
+        }
         private sealed class GenerateEncodingResponse
         {
             public string? Status { get; set; }

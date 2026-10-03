@@ -11,13 +11,16 @@ public class PatientsController : ControllerBase
 {
     private readonly IPatientService _service;
     private readonly IWebHostEnvironment _env;
+    private readonly IFaceEncodingService _faceEncodingService;
 
     public PatientsController(
         IPatientService service,
-        IWebHostEnvironment env)
+        IWebHostEnvironment env,
+        IFaceEncodingService faceEncodingService)
     {
         _service = service;
         _env = env;
+        _faceEncodingService = faceEncodingService;
     }
 
     [HttpPost]
@@ -118,5 +121,16 @@ public class PatientsController : ControllerBase
             json,
             "application/json"
         );
+    }
+    [HttpGet("warmup")]
+    public async Task<IActionResult> WarmUp()
+    {
+        var pythonReady = await _faceEncodingService.WarmUpAsync();
+
+        return Ok(new
+        {
+            status = "success",
+            pythonReady
+        });
     }
 }

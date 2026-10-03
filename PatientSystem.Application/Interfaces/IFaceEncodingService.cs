@@ -14,5 +14,6 @@ namespace PatientSystem.Application.Interfaces
         );
 
         Task ReloadEncodingsAsync();
+        Task<bool> WarmUpAsync();
     }
 }
