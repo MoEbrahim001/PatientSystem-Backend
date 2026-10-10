@@ -3,7 +3,7 @@ using PatientSystem.Application.Interfaces;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
-
+using System.Diagnostics;
 namespace PatientSystem.Infrastructure.Services
 {
     public class FaceEncodingService : IFaceEncodingService
@@ -121,11 +121,24 @@ namespace PatientSystem.Infrastructure.Services
                 );
             }
 
+            var totalWatch = Stopwatch.StartNew();
+
+            Console.WriteLine(
+                $"[PERF][.NET] detectAndFind START | " +
+                $"File={file.FileName} | " +
+                $"Size={(file.Length / 1024.0):F2} KB"
+            );
+
             try
             {
-                using var form = new MultipartFormDataContent();
-                await using var stream = file.OpenReadStream();
-                using var fileContent = new StreamContent(stream);
+                using var form =
+                    new MultipartFormDataContent();
+
+                await using var stream =
+                    file.OpenReadStream();
+
+                using var fileContent =
+                    new StreamContent(stream);
 
                 fileContent.Headers.ContentType =
                     new MediaTypeHeaderValue(
@@ -140,24 +153,66 @@ namespace PatientSystem.Infrastructure.Services
                     Path.GetFileName(file.FileName)
                 );
 
-                using var response = await _http.PostAsync(
-                    "detectAndFind",
-                    form
+                var pythonWatch =
+                    Stopwatch.StartNew();
+
+                Console.WriteLine(
+                    "[PERF][.NET] Calling Python /detectAndFind..."
                 );
 
-                var body = await response.Content.ReadAsStringAsync();
+                using var response =
+                    await _http.PostAsync(
+                        "detectAndFind",
+                        form
+                    );
+
+                pythonWatch.Stop();
+
+                Console.WriteLine(
+                    $"[PERF][.NET] Python HTTP request = " +
+                    $"{pythonWatch.ElapsedMilliseconds} ms"
+                );
+
+                var bodyWatch =
+                    Stopwatch.StartNew();
+
+                var body =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                bodyWatch.Stop();
+
+                Console.WriteLine(
+                    $"[PERF][.NET] Response body read = " +
+                    $"{bodyWatch.ElapsedMilliseconds} ms"
+                );
 
                 if (!response.IsSuccessStatusCode)
                 {
                     throw new Exception(
-                        $"Python detectAndFind failed ({(int)response.StatusCode}): {body}"
+                        $"Python detectAndFind failed " +
+                        $"({(int)response.StatusCode}): {body}"
                     );
                 }
+
+                totalWatch.Stop();
+
+                Console.WriteLine(
+                    $"[PERF][.NET] TOTAL detectAndFind = " +
+                    $"{totalWatch.ElapsedMilliseconds} ms"
+                );
 
                 return body;
             }
             catch (TaskCanceledException ex)
             {
+                totalWatch.Stop();
+
+                Console.WriteLine(
+                    $"[PERF][.NET] TIMEOUT after " +
+                    $"{totalWatch.ElapsedMilliseconds} ms"
+                );
+
                 throw new Exception(
                     "Face recognition service timed out.",
                     ex
@@ -165,6 +220,13 @@ namespace PatientSystem.Infrastructure.Services
             }
             catch (HttpRequestException ex)
             {
+                totalWatch.Stop();
+
+                Console.WriteLine(
+                    $"[PERF][.NET] HTTP ERROR after " +
+                    $"{totalWatch.ElapsedMilliseconds} ms"
+                );
+
                 throw new Exception(
                     "Could not connect to Face Recognition service.",
                     ex
@@ -221,13 +283,37 @@ namespace PatientSystem.Infrastructure.Services
         }
         public async Task<bool> WarmUpAsync()
         {
+            var watch = Stopwatch.StartNew();
+
             try
             {
-                var response = await _http.GetAsync("health");
+                Console.WriteLine(
+                    "[PERF][.NET] Python warmup START"
+                );
+
+                using var response =
+                    await _http.GetAsync("health");
+
+                watch.Stop();
+
+                Console.WriteLine(
+                    $"[PERF][.NET] Python warmup = " +
+                    $"{watch.ElapsedMilliseconds} ms | " +
+                    $"Status={(int)response.StatusCode}"
+                );
+
                 return response.IsSuccessStatusCode;
             }
-            catch
+            catch (Exception ex)
             {
+                watch.Stop();
+
+                Console.WriteLine(
+                    $"[PERF][.NET] Python warmup FAILED after " +
+                    $"{watch.ElapsedMilliseconds} ms | " +
+                    $"{ex.Message}"
+                );
+
                 return false;
             }
         }
