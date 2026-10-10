@@ -4,6 +4,7 @@ using PatientSystem.Application.DTOs;
 using PatientSystem.Application.DTOs.Patients;
 using PatientSystem.Application.Interfaces;
 using PatientSystem.Domain.Entities;
+using System.Diagnostics;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -104,23 +105,45 @@ public class PatientsController : ControllerBase
     }
 
     [HttpPost("detectAndFind")]
-    public async Task<IActionResult> DetectAndFind(
-        [FromForm] IFormFile file)
+    public async Task<IActionResult> DetectAndFind(IFormFile file)
     {
-        if (file == null || file.Length == 0)
-        {
-            return BadRequest(new
-            {
-                message = "No face image uploaded."
-            });
-        }
+        var watch = Stopwatch.StartNew();
 
-        var json = await _service.DetectAndFindAsync(file);
-
-        return Content(
-            json,
-            "application/json"
+        Console.WriteLine(
+            $"[PERF][CONTROLLER] detectAndFind START | " +
+            $"Size={file?.Length ?? 0} bytes"
         );
+
+        try
+        {
+            var result =
+                await _faceEncodingService
+                    .DetectAndFindAsync(file);
+
+            watch.Stop();
+
+            Console.WriteLine(
+                $"[PERF][CONTROLLER] detectAndFind TOTAL = " +
+                $"{watch.ElapsedMilliseconds} ms"
+            );
+
+            Response.Headers["X-DotNet-Total-Ms"] =
+                watch.ElapsedMilliseconds.ToString();
+
+            return Content(
+                result,
+                "application/json"
+            );
+        }
+        catch
+        {
+            watch.Stop();
+
+            Response.Headers["X-DotNet-Total-Ms"] =
+                watch.ElapsedMilliseconds.ToString();
+
+            throw;
+        }
     }
     [HttpGet("warmup")]
     public async Task<IActionResult> WarmUp()

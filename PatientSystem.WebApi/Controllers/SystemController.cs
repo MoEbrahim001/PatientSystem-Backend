@@ -15,14 +15,26 @@ namespace PatientSystem.WebApi.Controllers
         }
 
         [HttpGet("warmup")]
+        [ResponseCache(
+     NoStore = true,
+     Location = ResponseCacheLocation.None
+ )]
         public async Task<IActionResult> WarmUp()
         {
-            var pythonReady = await _faceEncodingService.WarmUpAsync();
+            Response.Headers["Cache-Control"] =
+                "no-store, no-cache, must-revalidate";
+
+            Response.Headers["Pragma"] =
+                "no-cache";
+
+            var pythonReady =
+                await _faceEncodingService.WarmUpAsync();
 
             return Ok(new
             {
                 status = "success",
-                pythonReady
+                pythonReady,
+                checkedAtUtc = DateTime.UtcNow
             });
         }
     }
